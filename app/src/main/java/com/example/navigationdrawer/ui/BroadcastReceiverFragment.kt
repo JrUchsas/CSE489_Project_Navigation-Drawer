@@ -87,29 +87,39 @@ class BroadcastReceiverFragment : Fragment() {
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
         spinner.adapter = adapter
 
-        // Simplified spinner listener or remove if spinner is not needed
+        // Spinner listener to handle custom broadcast and battery notification
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                // If the spinner is still used for other features, keep its logic.
-                // Otherwise, remove this listener and ensure elements are always visible.
-                // For this task, we want the battery elements always visible.
-                // I'll assume the spinner is for other functionality and won't hide/show elements based on it.
+                when (position) {
+                    0 -> { // "Custom" selected
+                        val customIntent = Intent("com.example.cse489assignment.CUSTOM_BROADCAST")
+                        customIntent.putExtra("message", "Custom Broadcast Received!")
+                        requireContext().sendBroadcast(customIntent)
+                        Toast.makeText(requireContext(), "Custom Broadcast Sent!", Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> { // "Battery Notification" selected
+                        // This option is handled by the EditText's TextWatcher
+                        // No direct action needed here, as the notification is triggered by ID input
+                    }
+                }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 // No action needed
             }
         }
-        spinner.setSelection(1) // Select "Battery Notification" by default if spinner is kept
+        spinner.setSelection(1) // Select "Battery Notification" by default
 
         idInputEditText.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 val inputId = s.toString()
                 if (inputId == "38") {
+                    val calculatedPercentage = (currentActualBatteryPercentage + 10) % 238
+                    calculatedBatteryTextView.text = "Display Percentage: $calculatedPercentage%"
                     checkNotificationPermissionAndShowBatteryNotification()
                 } else {
                     // If input is not 38, show actual battery percentage in calculatedBatteryTextView
-                    calculatedBatteryTextView.text = "Calculated Battery (for notification): $currentActualBatteryPercentage%"
+                    calculatedBatteryTextView.text = "Display Percentage: $currentActualBatteryPercentage%"
                     // Optionally, you might want to cancel any previous notification here
                     // NotificationManagerCompat.from(requireContext()).cancel(NOTIFICATION_ID)
                 }

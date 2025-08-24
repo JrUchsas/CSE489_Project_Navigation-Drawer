@@ -23,6 +23,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.navigationdrawer.R
+import com.example.navigationdrawer.CustomBroadcastSenderActivity
 
 class BroadcastReceiverFragment : Fragment() {
 
@@ -83,7 +84,7 @@ class BroadcastReceiverFragment : Fragment() {
         calculatedBatteryTextView = view.findViewById(R.id.calculatedBatteryTextView)
 
         // Spinner setup (adjust or remove if not needed for other features)
-        val options = arrayOf("Custom", "Battery Notification") // Keep if spinner is still used
+        val options = arrayOf("Custom Broadcast", "Battery Notification") // Keep if spinner is still used
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
         spinner.adapter = adapter
 
@@ -92,10 +93,8 @@ class BroadcastReceiverFragment : Fragment() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 when (position) {
                     0 -> { // "Custom" selected
-                        val customIntent = Intent("com.example.cse489assignment.CUSTOM_BROADCAST")
-                        customIntent.putExtra("message", "Custom Broadcast Received!")
-                        requireContext().sendBroadcast(customIntent)
-                        Toast.makeText(requireContext(), "Custom Broadcast Sent!", Toast.LENGTH_SHORT).show()
+                        val intent = Intent(requireContext(), CustomBroadcastSenderActivity::class.java)
+                        startActivity(intent)
                     }
                     1 -> { // "Battery Notification" selected
                         // This option is handled by the EditText's TextWatcher
@@ -202,6 +201,16 @@ class BroadcastReceiverFragment : Fragment() {
 
         // Register battery receiver
         val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryStatus: Intent? = requireContext().registerReceiver(null, batteryFilter) // Get sticky intent
+        batteryStatus?.let { intent ->
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            if (level != -1 && scale != -1) {
+                val batteryPct = (level / scale.toFloat() * 100).toInt()
+                currentActualBatteryPercentage = batteryPct
+                actualBatteryTextView.text = "Actual Battery: $batteryPct%"
+            }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requireActivity().registerReceiver(batteryReceiver, batteryFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {

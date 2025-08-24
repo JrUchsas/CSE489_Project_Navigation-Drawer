@@ -1,6 +1,8 @@
 package com.example.navigationdrawer.ui
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -13,28 +15,42 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.text.Editable
+import android.text.TextWatcher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.navigationdrawer.R
 
 class BroadcastReceiverFragment : Fragment() {
 
-    private lateinit var spinner: Spinner
-    private lateinit var editText: EditText
-    private lateinit var button: Button
-    private lateinit var batteryLevel: TextView
+    // UI elements
+    private lateinit var spinner: Spinner // Keep if still used for other purposes, otherwise remove
+    private lateinit var idInputEditText: EditText
+    
+    private lateinit var actualBatteryTextView: TextView
+    private lateinit var calculatedBatteryTextView: TextView
 
-    private val requestPermissionLauncher =
+    // Battery related
+    private var currentActualBatteryPercentage: Int = 0 // Store actual battery percentage
+
+    // Notification constants
+    private val NOTIFICATION_CHANNEL_ID = "battery_notification_channel"
+    private val NOTIFICATION_ID = 101
+
+    private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
                 Toast.makeText(requireContext(), "Notification permission granted", Toast.LENGTH_SHORT).show()
-                sendCustomBroadcast()
+                showBatteryNotification() // Try showing notification after permission
             } else {
                 Toast.makeText(requireContext(), "Notification permission denied", Toast.LENGTH_SHORT).show()
             }
         }
 
+    // Existing customReceiver (keep as is if still needed for other functionality)
     private val customReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val message = intent?.getStringExtra("message")
@@ -47,8 +63,9 @@ class BroadcastReceiverFragment : Fragment() {
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
             if (level != -1 && scale != -1) {
-                val batteryPct = level / scale.toFloat()
-                batteryLevel.text = "Battery Level: ${"%.0f".format(batteryPct * 100)}%"
+                val batteryPct = (level / scale.toFloat() * 100).toInt()
+                currentActualBatteryPercentage = batteryPct // Store the actual percentage
+                actualBatteryTextView.text = "Actual Battery: $batteryPct%"
             }
         }
     }
@@ -59,84 +76,113 @@ class BroadcastReceiverFragment : Fragment() {
     ): View? {
         val view = inflater.inflate(R.layout.fragment_broadcast_receiver, container, false)
 
-        spinner = view.findViewById(R.id.spinner)
-        editText = view.findViewById(R.id.editText)
-        button = view.findViewById(R.id.button)
-        batteryLevel = view.findViewById(R.id.batteryLevel)
+        // Initialize UI elements with new IDs
+        spinner = view.findViewById(R.id.spinner) // Keep if spinner is still used
+        idInputEditText = view.findViewById(R.id.idInputEditText)
+        actualBatteryTextView = view.findViewById(R.id.actualBatteryTextView)
+        calculatedBatteryTextView = view.findViewById(R.id.calculatedBatteryTextView)
 
-        val options = arrayOf("Custom", "Battery Notification")
+        // Spinner setup (adjust or remove if not needed for other features)
+        val options = arrayOf("Custom", "Battery Notification") // Keep if spinner is still used
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
         spinner.adapter = adapter
 
+        // Simplified spinner listener or remove if spinner is not needed
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (position == 0) { // Custom
-                    editText.visibility = View.VISIBLE
-                    button.visibility = View.VISIBLE
-                    batteryLevel.visibility = View.GONE
-                } else { // Battery Notification
-                    editText.visibility = View.GONE
-                    button.visibility = View.GONE
-                    batteryLevel.visibility = View.VISIBLE
-                }
+                // If the spinner is still used for other features, keep its logic.
+                // Otherwise, remove this listener and ensure elements are always visible.
+                // For this task, we want the battery elements always visible.
+                // I'll assume the spinner is for other functionality and won't hide/show elements based on it.
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {
-                editText.visibility = View.VISIBLE
-                button.visibility = View.VISIBLE
-                batteryLevel.visibility = View.GONE
+                // No action needed
             }
         }
+        spinner.setSelection(1) // Select "Battery Notification" by default if spinner is kept
 
-        button.setOnClickListener {
-            if (spinner.selectedItemPosition == 0) {
-                checkNotificationPermissionAndBroadcast()
+        idInputEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val inputId = s.toString()
+                if (inputId == "38") {
+                    checkNotificationPermissionAndShowBatteryNotification()
+                } else {
+                    // If input is not 38, show actual battery percentage in calculatedBatteryTextView
+                    calculatedBatteryTextView.text = "Calculated Battery (for notification): $currentActualBatteryPercentage%"
+                    // Optionally, you might want to cancel any previous notification here
+                    // NotificationManagerCompat.from(requireContext()).cancel(NOTIFICATION_ID)
+                }
             }
-        }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
-        // Ensure the initial state is correct
-        spinner.setSelection(0)
+        createNotificationChannel() // Create channel when fragment is created
 
         return view
     }
 
-    private fun checkNotificationPermissionAndBroadcast() {
+    private fun checkNotificationPermissionAndShowBatteryNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             when {
                 ContextCompat.checkSelfPermission(
                     requireContext(),
                     Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED -> {
-                    sendCustomBroadcast()
+                    showBatteryNotification()
                 }
                 shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) -> {
-                    Toast.makeText(requireContext(), "Notification permission is needed to show custom alerts.", Toast.LENGTH_LONG).show()
-                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    Toast.makeText(requireContext(), "Notification permission is needed to show battery alerts.", Toast.LENGTH_LONG).show()
+                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
                 else -> {
-                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
         } else {
-            sendCustomBroadcast()
+            showBatteryNotification()
         }
     }
 
-    private fun sendCustomBroadcast() {
-        val intent = Intent("com.example.cse489assignment.CUSTOM_BROADCAST")
-        intent.putExtra("message", editText.text.toString())
-        intent.setPackage(requireActivity().packageName)
-        requireActivity().sendBroadcast(intent)
+    private fun showBatteryNotification() {
+        val inputId = idInputEditText.text.toString()
+        val calculatedPercentage: Int
 
-        // Add a confirmation toast
-        Toast.makeText(requireContext(), "Message Sent", Toast.LENGTH_SHORT).show()
+        if (inputId == "38") {
+            calculatedPercentage = (currentActualBatteryPercentage + 10) % 238
+        } else {
+            calculatedPercentage = currentActualBatteryPercentage
+        }
 
-        // Clear the text field after sending for better user experience
-        editText.text.clear()
+        calculatedBatteryTextView.text = "Calculated Battery (for notification): $calculatedPercentage%"
+
+        val notificationManager = NotificationManagerCompat.from(requireContext())
+        val builder = NotificationCompat.Builder(requireContext(), NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground) // Use a suitable icon
+            .setContentTitle("Battery Status")
+            .setContentText("Display Percentage: $calculatedPercentage%")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+
+        notificationManager.notify(NOTIFICATION_ID, builder.build())
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Battery Notifications"
+            val descriptionText = "Notifications for battery percentage"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: NotificationManager =
+                requireContext().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // Register custom receiver
+        // Register custom receiver (if still needed)
         val customFilter = IntentFilter("com.example.cse489assignment.CUSTOM_BROADCAST")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requireActivity().registerReceiver(customReceiver, customFilter, Context.RECEIVER_NOT_EXPORTED)
@@ -155,7 +201,7 @@ class BroadcastReceiverFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        requireActivity().unregisterReceiver(customReceiver)
+        requireActivity().unregisterReceiver(customReceiver) // Unregister if still needed
         requireActivity().unregisterReceiver(batteryReceiver)
     }
 }
